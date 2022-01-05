@@ -768,6 +768,13 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
         }
     }
 
+    func testCustomTokenAuthentication() {
+        let user = logInUser(for: jwtCredential(withAppId: appId))
+        XCTAssertEqual(user.profile.metadata["anotherName"], "Bar Foo")
+        XCTAssertEqual(user.profile.metadata["name"], "Foo Bar")
+        XCTAssertEqual(user.profile.metadata["occupation"], "firefighter")
+    }
+
     // MARK: - User-specific functionality
 
     func testUserExpirationCallback() {
@@ -1358,6 +1365,21 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
 
         XCTAssertEqual(app.currentUser?.customData["favourite_colour"], .string("green"))
         XCTAssertEqual(app.currentUser?.customData["apples"], .int64(10))
+    }
+
+    // MARK: User Profile
+
+    func testUserProfileInitialization() {
+        let profile = UserProfile()
+        XCTAssertNil(profile.name)
+        XCTAssertNil(profile.maxAge)
+        XCTAssertNil(profile.minAge)
+        XCTAssertNil(profile.birthday)
+        XCTAssertNil(profile.gender)
+        XCTAssertNil(profile.firstName)
+        XCTAssertNil(profile.lastName)
+        XCTAssertNil(profile.pictureURL)
+        XCTAssertEqual(profile.metadata, [:])
     }
 }
 
@@ -2169,7 +2191,7 @@ class CombineObjectServerTests: SwiftSyncTestCase {
     }
 }
 
-#if swift(>=5.5) && canImport(_Concurrency)
+#if swift(>=5.5.2) && canImport(_Concurrency)
 
 @available(macOS 12.0, *)
 class AsyncAwaitObjectServerTests: SwiftSyncTestCase {
@@ -2184,25 +2206,22 @@ class AsyncAwaitObjectServerTests: SwiftSyncTestCase {
         XCTAssertEqual(realm.objects(SwiftPerson.self).count, 10)
     }
 
-    func testAsyncOpenSync() async throws {
-        if isParent {
-            let user = try await self.app.login(credentials: basicCredentials())
-            let realm = try await Realm(configuration: user.configuration(testName: #function))
-            try! realm.write {
-                realm.add(SwiftHugeSyncObject.create())
-                realm.add(SwiftHugeSyncObject.create())
-            }
-            waitForUploads(for: realm)
-            executeChild()
-        } else {
-            let user = try await app.login(credentials: .anonymous)
-            let realm = try await Realm(configuration: user.configuration(testName: #function),
-                                        downloadBeforeOpen: .once)
-            XCTAssertEqual(realm.objects(SwiftHugeSyncObject.self).count, 2)
+    @MainActor func testAsyncOpenSync() async throws {
+        let user = try await self.app.login(credentials: basicCredentials())
+        let realm = try await Realm(configuration: user.configuration(testName: #function))
+        try! realm.write {
+            realm.add(SwiftHugeSyncObject.create())
+            realm.add(SwiftHugeSyncObject.create())
         }
+        waitForUploads(for: realm)
+
+        let user2 = try await app.login(credentials: .anonymous)
+        let realm2 = try await Realm(configuration: user2.configuration(testName: #function),
+                                    downloadBeforeOpen: .once)
+        XCTAssertEqual(realm2.objects(SwiftHugeSyncObject.self).count, 2)
     }
 
-    func testAsyncOpenDownloadBehaviorNever() async throws {
+    @MainActor func testAsyncOpenDownloadBehaviorNever() async throws {
         // Populate the Realm on the server
         let user1 = try await self.app.login(credentials: basicCredentials())
         let realm1 = try await Realm(configuration: user1.configuration(testName: #function))
@@ -2219,7 +2238,7 @@ class AsyncAwaitObjectServerTests: SwiftSyncTestCase {
         XCTAssertEqual(realm2.objects(SwiftHugeSyncObject.self).count, 0)
     }
 
-    func testAsyncOpenDownloadBehaviorOnce() async throws {
+    @MainActor func testAsyncOpenDownloadBehaviorOnce() async throws {
         // Populate the Realm on the server
         let user1 = try await self.app.login(credentials: basicCredentials())
         let realm1 = try await Realm(configuration: user1.configuration(testName: #function))
@@ -2250,7 +2269,7 @@ class AsyncAwaitObjectServerTests: SwiftSyncTestCase {
     }
 
 
-    func testAsyncOpenDownloadBehaviorAlways() async throws {
+    @MainActor func testAsyncOpenDownloadBehaviorAlways() async throws {
         // Populate the Realm on the server
         let user1 = try await self.app.login(credentials: basicCredentials())
         let realm1 = try await Realm(configuration: user1.configuration(testName: #function))
@@ -2277,7 +2296,7 @@ class AsyncAwaitObjectServerTests: SwiftSyncTestCase {
         // Should wait for the new objects to download
         let realm3 = try await Realm(configuration: user2.configuration(testName: #function),
                                      downloadBeforeOpen: .always)
-        XCTAssertEqual(realm3.objects(SwiftHugeSyncObject.self).count, 2)
+        XCTAssertEqual(realm3.objects(SwiftHugeSyncObject.self).count, 4)
     }
 
     func testCallResetPasswordAsyncAwait() async throws {

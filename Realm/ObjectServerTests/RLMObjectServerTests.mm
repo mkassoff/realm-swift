@@ -149,6 +149,13 @@ static NSString *generateRandomString(int num) {
     XCTAssert([currentUser.accessToken isEqualToString:syncUser.accessToken]);
 }
 
+- (void)testCustomTokenAuthentication {
+    RLMUser *user = [self logInUserForCredentials:[self jwtCredentialWithAppId:self.appId]];
+    XCTAssertTrue([user.profile.metadata[@"anotherName"] isEqualToString:@"Bar Foo"]);
+    XCTAssertTrue([user.profile.metadata[@"name"] isEqualToString:@"Foo Bar"]);
+    XCTAssertTrue([user.profile.metadata[@"occupation"] isEqualToString:@"firefighter"]);
+}
+
 - (void)testCallFunction {
     XCTestExpectation *expectation = [self expectationWithDescription:@"should get sum of arguments from remote function"];
     [self.anonymousUser callFunctionNamed:@"sum"
@@ -606,6 +613,44 @@ static NSString *randomEmail() {
     [self waitForExpectationsWithTimeout:10.0 handler:nil];
 }
 
+#pragma mark - User Profile
+
+- (void)testUserProfileInitialization {
+    RLMUserProfile *profile = [[RLMUserProfile alloc] initWithUserProfile:realm::SyncUserProfile()];
+    XCTAssertNil(profile.name);
+    XCTAssertNil(profile.maxAge);
+    XCTAssertNil(profile.minAge);
+    XCTAssertNil(profile.birthday);
+    XCTAssertNil(profile.gender);
+    XCTAssertNil(profile.firstName);
+    XCTAssertNil(profile.lastName);
+    XCTAssertNil(profile.pictureURL);
+
+    auto metadata = realm::bson::BsonDocument({{"some_key", "some_value"}});
+
+    profile = [[RLMUserProfile alloc] initWithUserProfile:realm::SyncUserProfile(realm::bson::BsonDocument({
+        {"name", "Jane"},
+        {"max_age", "40"},
+        {"min_age", "30"},
+        {"birthday", "October 10th"},
+        {"gender", "unknown"},
+        {"first_name", "Jane"},
+        {"last_name", "Jannson"},
+        {"picture_url", "SomeURL"},
+        {"other_data", metadata}
+    }))];
+
+    XCTAssert([profile.name isEqualToString:@"Jane"]);
+    XCTAssert([profile.maxAge isEqualToString:@"40"]);
+    XCTAssert([profile.minAge isEqualToString:@"30"]);
+    XCTAssert([profile.birthday isEqualToString:@"October 10th"]);
+    XCTAssert([profile.gender isEqualToString:@"unknown"]);
+    XCTAssert([profile.firstName isEqualToString:@"Jane"]);
+    XCTAssert([profile.lastName isEqualToString:@"Jannson"]);
+    XCTAssert([profile.pictureURL isEqualToString:@"SomeURL"]);
+    XCTAssertEqualObjects(profile.metadata[@"other_data"], @{@"some_key": @"some_value"});
+}
+
 #pragma mark - Basic Sync
 
 /// It should be possible to successfully open a Realm configured for sync with a normal user.
@@ -937,6 +982,7 @@ static NSString *randomEmail() {
                                                 stopPolicy:RLMSyncStopPolicyImmediately];
         path = realm.configuration.pathOnDisk;
     }
+    [user.app.syncManager waitForSessionTermination];
 
     RLMRealmConfiguration *c = [RLMRealmConfiguration defaultConfiguration];
     c.fileURL = [NSURL fileURLWithPath:path];
@@ -1823,6 +1869,26 @@ static const NSInteger NUMBER_OF_BIG_OBJECTS = 2;
     XCTAssertLessThanOrEqual(finalSize, usedSize + realm::util::page_size());
 }
 
+- (void)testWriteCopy {
+    RLMUser *user = [self userForTest:_cmd];
+    NSString *partitionValue = NSStringFromSelector(_cmd);
+    RLMRealm *syncRealm = [self openRealmForPartitionValue:partitionValue user:user];
+    [self addPersonsToRealm:syncRealm persons:@[[Person john]]];
+
+    NSError *writeError;
+    XCTAssertTrue([syncRealm writeCopyToURL:RLMTestRealmURL()
+                              encryptionKey:syncRealm.configuration.encryptionKey
+                                      error:&writeError]);
+    XCTAssertNil(writeError);
+
+    RLMRealmConfiguration *localConfig = [RLMRealmConfiguration new];
+    localConfig.fileURL = RLMTestRealmURL();
+    localConfig.schemaVersion = 1;
+
+    RLMRealm *localCopy = [RLMRealm realmWithConfiguration:localConfig error:nil];
+    XCTAssertEqual(1U, [Person allObjectsInRealm:localCopy].count);
+}
+
 #pragma mark - Read Only
 
 - (void)testOpenSynchronouslyInReadOnlyBeforeRemoteSchemaIsInitialized {
@@ -2629,8 +2695,8 @@ static const NSInteger NUMBER_OF_BIG_OBJECTS = 2;
 static NSString *newPathForPartitionValue(RLMUser *user, id<RLMBSON> partitionValue) {
     std::stringstream s;
     s << RLMConvertRLMBSONToBson(partitionValue);
-    auto path = user._syncUser->sync_manager()->path_for_realm(*user._syncUser, s.str());
-    return @(path.c_str());
+    realm::SyncConfig config(user._syncUser, "");
+    return @(user._syncUser->sync_manager()->path_for_realm(config, s.str()).c_str());
 }
 
 - (void)testSyncFilePaths {
@@ -2660,9 +2726,9 @@ static NSString *oldPathForPartitionValue(RLMUser *user, id<RLMBSON> partitionVa
     std::stringstream s;
     s << RLMConvertRLMBSONToBson(partitionValue);
     NSString *encodedPartitionValue = [@(s.str().c_str()) stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
-    NSString *encodedRealmName = [[NSString alloc] initWithFormat:@"%@/%@", user.identifier, encodedPartitionValue];
-    auto path = user._syncUser->sync_manager()->path_for_realm(*user._syncUser, encodedRealmName.UTF8String);
-    return @(path.c_str());
+    realm::SyncConfig config(user._syncUser,
+                             [[NSString alloc] initWithFormat:@"%@/%@", user.identifier, encodedPartitionValue].UTF8String);
+    return @(user._syncUser->sync_manager()->path_for_realm(config).c_str());
 }
 
 - (void)testLegacyFilePathsAreUsedIfFilesArePresent {
