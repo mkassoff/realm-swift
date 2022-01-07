@@ -429,7 +429,7 @@ REALM_NOINLINE void RLMRealmTranslateException(NSError **error) {
             if (RLMRealm *realm = RLMGetThreadLocalCachedRealmForPath(config.path, cacheKey)) {
                 auto const& old_config = realm->_realm->config();
                 if (old_config.immutable() != config.immutable()
-                    || old_config.read_only_alternative() != config.read_only_alternative()) {
+                    || old_config.read_only() != config.read_only()) {
                     @throw RLMException(@"Realm at path '%s' already opened with different read permissions", config.path.c_str());
                 }
                 if (old_config.in_memory != config.in_memory) {
@@ -965,6 +965,23 @@ REALM_NOINLINE void RLMRealmTranslateException(NSError **error) {
     }
 
     return NO;
+}
+
+- (BOOL)exportWithSyncConfiguation:(RLMRealmConfiguration *)configuration error:(NSError **)error {
+    if (self.configuration.syncConfiguration) {
+        RLMSetErrorOrThrow(RLMMakeError(RLMErrorFail, @"Cannot export a Synced Realm."), error);
+        return NO;
+    }
+    if (!configuration.syncConfiguration) {
+        RLMSetErrorOrThrow(RLMMakeError(RLMErrorFail, @"Exporting a local Realm requires that you pass a configuration for a synced Realm."), error);
+        return NO;
+    }
+    if (RLMIsRealmCachedAtPath(configuration.pathOnDisk)) {
+        RLMSetErrorOrThrow(RLMMakeError(RLMErrorFail, @"Synced Realm already exists for configuration."), error);
+        return NO;
+    }
+    _realm->export_to(configuration.config);
+    return YES;
 }
 
 + (BOOL)fileExistsForConfiguration:(RLMRealmConfiguration *)config {

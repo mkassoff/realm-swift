@@ -915,6 +915,23 @@ import Realm.Private
     }
 
     /**
+     Exports
+
+     The destination file cannot already exist.
+
+     Note that if this method is called from within a write transaction, the *current* data is written, not the data
+     from the point when the previous write transaction was committed.
+
+     - parameter fileURL:       Local URL to save the Realm to.
+     - parameter encryptionKey: Optional 64-byte encryption key to encrypt the new file with.
+
+     - throws: An `NSError` if the copy could not be written.
+     */
+    public func exportForSync(config: Realm.Configuration) throws {
+        try rlmRealm.export(withSyncConfiguation: config.rlmConfiguration)
+    }
+
+    /**
      Checks if the Realm file for the given configuration exists locally on disk.
 
      For non-synchronized, non-in-memory Realms, this is equivalent to
