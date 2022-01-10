@@ -517,7 +517,7 @@ typedef void (^RLMNotificationBlock)(RLMNotification notification, RLMRealm *rea
  */
 @property (nonatomic, readonly) BOOL inAsyncWriteTransaction;
 
-/// A block type representing a block which can be used to report an async transaction related error to the application.
+/// A callback block which can be used to report an async transaction related error to the application.
 typedef void(^RLMRealmAsyncErrorHandler)(RLMAsyncTransactionId, NSError *);
 
 /**
