@@ -122,7 +122,7 @@ let package = Package(
             targets: ["Realm", "RealmSwift"]),
     ],
     dependencies: [
-        .package(name: "RealmDatabase", url: "https://github.com/realm/realm-core", .branch("je/copy-over"))
+        .package(name: "RealmDatabase", url: "https://github.com/realm/realm-core", .branch("feature/convert-local-realm"))
     ],
     targets: [
       .target(

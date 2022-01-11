@@ -1334,7 +1334,7 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
         XCTAssertEqual(profile.metadata, [:])
     }
 
-    // MARK: Export To
+    // MARK: Export For Sync
 
     func testExportLocalRealmForSync() {
         var localConfig = Realm.Configuration()
@@ -1404,6 +1404,8 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
         // Cannot export a synced realm.
         assertThrows(try! syncedRealm.exportForSync(config: syncConfig2))
     }
+
+    // test data already in server
 }
 
 class AnyRealmValueSyncTests: SwiftSyncTestCase {

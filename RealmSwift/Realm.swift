@@ -915,17 +915,13 @@ import Realm.Private
     }
 
     /**
-     Exports
+     Exports a local Realm for use with MongoDB Realm Sync.
 
-     The destination file cannot already exist.
+     A Realm for the given Sync User configuration cannot already exist.
 
-     Note that if this method is called from within a write transaction, the *current* data is written, not the data
-     from the point when the previous write transaction was committed.
+     - parameter configuration A configuration to be passed from a RLMSyncUser.
 
-     - parameter fileURL:       Local URL to save the Realm to.
-     - parameter encryptionKey: Optional 64-byte encryption key to encrypt the new file with.
-
-     - throws: An `NSError` if the copy could not be written.
+     - throws: An `NSError` if the export could not be performed.
      */
     public func exportForSync(config: Realm.Configuration) throws {
         try rlmRealm.export(withSyncConfiguation: config.rlmConfiguration)

@@ -239,6 +239,18 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (BOOL)writeCopyToURL:(NSURL *)fileURL encryptionKey:(nullable NSData *)key error:(NSError **)error;
 
+/**
+ Exports a local Realm for use with MongoDB Realm Sync.
+
+ A Realm for the given Sync User configuration cannot already exist.
+
+ @param configuration A configuration to be passed from a RLMSyncUser.
+ @param error   If an error occurs, upon return contains an `NSError` object
+ that describes the problem. If you are not interested in
+ possible errors, pass in `NULL`.
+
+ @return `YES` if the Realm was successfully exported for use with MongoDB Realm Sync, `NO` if an error occurred.
+ */
 - (BOOL)exportWithSyncConfiguation:(RLMRealmConfiguration *)configuration error:(NSError **)error;
 
 /**

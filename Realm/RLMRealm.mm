@@ -980,6 +980,7 @@ REALM_NOINLINE void RLMRealmTranslateException(NSError **error) {
         RLMSetErrorOrThrow(RLMMakeError(RLMErrorFail, @"Synced Realm already exists for configuration."), error);
         return NO;
     }
+    // wrap in try catch cause this can throw.
     _realm->export_to(configuration.config);
     return YES;
 }
