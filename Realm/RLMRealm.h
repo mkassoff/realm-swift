@@ -251,7 +251,7 @@ NS_ASSUME_NONNULL_BEGIN
 
  @return `YES` if the Realm was successfully exported for use with MongoDB Realm Sync, `NO` if an error occurred.
  */
-- (BOOL)exportWithSyncConfiguation:(RLMRealmConfiguration *)configuration error:(NSError **)error;
+- (BOOL)exportForSyncWithConfiguration:(RLMRealmConfiguration *)configuration error:(NSError **)error;
 
 /**
  Checks if the Realm file for the given configuration exists locally on disk.

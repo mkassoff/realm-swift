@@ -1345,7 +1345,6 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
         var syncConfig = user.configuration(partitionValue: .null)
         syncConfig.objectTypes = [SwiftPerson.self]
 
-
         let localRealm = try! Realm(configuration: localConfig)
         try! localRealm.write {
             localRealm.add(SwiftPerson(firstName: "John", lastName: "Doe"))
@@ -1354,7 +1353,7 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
         try! localRealm.exportForSync(config: syncConfig)
 
         let syncedRealm = try! Realm(configuration: syncConfig)
-        XCTAssertTrue(syncedRealm.objects(SwiftPerson.self).count == 1)
+        XCTAssertEqual(syncedRealm.objects(SwiftPerson.self).count, 1)
         waitForDownloads(for: syncedRealm)
 
         try! syncedRealm.write {
@@ -1379,11 +1378,15 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
         let localRealm = try! Realm(configuration: localConfig)
         _ = try! Realm(configuration: syncConfig)
         // Doing this should cause an error as a synced realm is already open.
+        var didCatch = false
         do {
             try localRealm.exportForSync(config: syncConfig)
+        } catch Realm.Error.fileExists {
+            didCatch = true
         } catch {
-            print(error)
+            XCTFail()
         }
+        XCTAssertTrue(didCatch)
     }
 
     func testExportLocalRealmWrongConfig() {
@@ -1405,7 +1408,57 @@ class SwiftObjectServerTests: SwiftSyncTestCase {
         assertThrows(try! syncedRealm.exportForSync(config: syncConfig2))
     }
 
-    // test data already in server
+    func testExportLocalRealmForSyncWithExistingData() {
+        let initialUser = try! logInUser(for: basicCredentials())
+        var initialSyncConfig = initialUser.configuration(partitionValue: .null)
+        initialSyncConfig.objectTypes = [SwiftPerson.self]
+
+        // Make sure objects with confliciting primary keys sync ok.
+        let conflictingObjectId = ObjectId.generate()
+        let person = SwiftPerson(value: ["_id": conflictingObjectId,
+                                         "firstName": "Foo", "lastName": "Bar"])
+        let initialRealm = try! Realm(configuration: initialSyncConfig)
+        try! initialRealm.write {
+            initialRealm.add(person)
+            initialRealm.add(SwiftPerson(firstName: "Foo2", lastName: "Bar2"))
+        }
+        waitForUploads(for: initialRealm)
+
+        var localConfig = Realm.Configuration()
+        localConfig.objectTypes = [SwiftPerson.self]
+        localConfig.fileURL = realmURLForFile("test.realm")
+
+        let user = try! logInUser(for: basicCredentials())
+        var syncConfig = user.configuration(partitionValue: .null)
+        syncConfig.objectTypes = [SwiftPerson.self]
+
+        let localRealm = try! Realm(configuration: localConfig)
+        // `person2` will override what was previously stored on the server.
+        let person2 = SwiftPerson(value: ["_id": conflictingObjectId,
+                                         "firstName": "John", "lastName": "Doe"])
+        try! localRealm.write {
+            localRealm.add(person2)
+            localRealm.add(SwiftPerson(firstName: "Foo3", lastName: "Bar3"))
+        }
+
+        try! localRealm.exportForSync(config: syncConfig)
+
+        let syncedRealm = try! Realm(configuration: syncConfig)
+        waitForDownloads(for: syncedRealm)
+        XCTAssertTrue(syncedRealm.objects(SwiftPerson.self).count == 3)
+
+        try! syncedRealm.write {
+            syncedRealm.add(SwiftPerson(firstName: "Jane", lastName: "Doe"))
+        }
+
+        waitForUploads(for: syncedRealm)
+        let syncedResults = syncedRealm.objects(SwiftPerson.self)
+        XCTAssertEqual(syncedResults.where
+                       { $0.firstName == "John" &&
+                         $0.lastName == "Doe" &&
+                         $0._id == conflictingObjectId }.count, 1)
+        XCTAssertTrue(syncedRealm.objects(SwiftPerson.self).count == 4)
+    }
 }
 
 class AnyRealmValueSyncTests: SwiftSyncTestCase {

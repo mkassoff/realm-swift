@@ -924,7 +924,7 @@ import Realm.Private
      - throws: An `NSError` if the export could not be performed.
      */
     public func exportForSync(config: Realm.Configuration) throws {
-        try rlmRealm.export(withSyncConfiguation: config.rlmConfiguration)
+        try rlmRealm.exportForSync(with: config.rlmConfiguration)
     }
 
     /**

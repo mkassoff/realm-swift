@@ -1979,6 +1979,141 @@ static const NSInteger NUMBER_OF_BIG_OBJECTS = 2;
     RLMRealmConfiguration *localRealmConfiguration = [RLMRealmConfiguration defaultConfiguration];
     XCTAssertNoThrow([localRealmConfiguration setDeleteRealmIfMigrationNeeded:YES]);
 }
+
+#pragma mark - Export For Sync
+
+- (void)testExportLocalRealmForSync {
+    RLMRealmConfiguration *localConfig = [RLMRealmConfiguration new];
+    localConfig.objectClasses = @[Person.class];
+    localConfig.fileURL = RLMTestRealmURL();
+
+    RLMUser *user = [self logInUserForCredentials:[self basicCredentialsWithName:NSStringFromSelector(_cmd)
+                                                                        register:YES]];
+    RLMRealmConfiguration *syncConfig = [user configurationWithPartitionValue:nil];
+    syncConfig.objectClasses = @[Person.class];
+
+    RLMRealm *localRealm = [RLMRealm realmWithConfiguration:localConfig error:nil];
+    [localRealm transactionWithBlock:^{
+        [localRealm addObject:[Person ringo]];
+    }];
+
+    [localRealm exportForSyncWithConfiguration:syncConfig error:nil];
+
+    RLMRealm *syncedRealm = [RLMRealm realmWithConfiguration:syncConfig error:nil];
+    XCTAssertEqual([syncedRealm allObjects:@"Person"].count, 1);
+    [self waitForDownloadsForRealm:syncedRealm];
+    [syncedRealm transactionWithBlock:^{
+        [syncedRealm addObject:[Person john]];
+    }];
+    [self waitForUploadsForRealm:syncedRealm];
+
+    RLMResults<Person *> *syncedResults = [Person allObjectsInRealm:syncedRealm];
+    XCTAssertEqual([syncedResults objectsWhere:@"firstName = 'Ringo'"].count, 1);
+    XCTAssertEqual([syncedResults objectsWhere:@"firstName = 'John'"].count, 1);
+}
+
+- (void)testExportLocalRealmForSyncIncorrectly {
+    RLMRealmConfiguration *localConfig = [RLMRealmConfiguration new];
+    localConfig.objectClasses = @[Person.class];
+    localConfig.fileURL = RLMTestRealmURL();
+
+    RLMUser *user = [self logInUserForCredentials:[self basicCredentialsWithName:NSStringFromSelector(_cmd)
+                                                                        register:YES]];
+    RLMRealmConfiguration *syncConfig = [user configurationWithPartitionValue:nil];
+    syncConfig.objectClasses = @[Person.class];
+
+    RLMRealm *localRealm = [RLMRealm realmWithConfiguration:localConfig error:nil];
+    [RLMRealm realmWithConfiguration:syncConfig error:nil];
+    // Doing this should cause an error as a synced realm is already open.
+    NSError *error;
+    [localRealm exportForSyncWithConfiguration:syncConfig error:&error];
+    XCTAssertEqual(error.code, RLMErrorFileExists);
+    XCTAssertTrue([error.userInfo[NSLocalizedDescriptionKey] isEqualToString:@"Synced Realm already exists for configuration."]);
+}
+
+- (void)testExportLocalRealmWrongConfig {
+    RLMRealm *realm = [RLMRealm defaultRealm];
+    // Should throw because sync configuration is missing.
+    NSError *error;
+    [realm exportForSyncWithConfiguration:realm.configuration error:&error];
+    XCTAssertEqual(error.code, RLMErrorFail);
+    XCTAssertTrue([error.userInfo[NSLocalizedDescriptionKey] isEqualToString:@"Exporting a local Realm requires that you pass a configuration for a synced Realm."]);
+}
+
+- (void)testExportSyncedRealm {
+    RLMUser *user = [self logInUserForCredentials:[self basicCredentialsWithName:@"user1"
+                                                                        register:YES]];
+    RLMRealmConfiguration *syncConfig = [user configurationWithPartitionValue:nil];
+    syncConfig.objectClasses = @[Person.class];
+
+    RLMUser *user2 = [self logInUserForCredentials:[self basicCredentialsWithName:@"user2"
+                                                                        register:YES]];
+    RLMRealmConfiguration *syncConfig2 = [user2 configurationWithPartitionValue:@"foo"];
+
+    RLMRealm *syncedRealm = [RLMRealm realmWithConfiguration:syncConfig error:nil];
+    // Cannot export a synced realm.
+    NSError *error;
+    [syncedRealm exportForSyncWithConfiguration:syncConfig2 error:&error];
+    XCTAssertEqual(error.code, RLMErrorFail);
+    XCTAssertTrue([error.userInfo[NSLocalizedDescriptionKey] isEqualToString:@"Cannot export a Synced Realm."]);
+}
+
+- (void)testExportLocalRealmForSyncWithExistingData {
+    RLMUser *initialUser = [self logInUserForCredentials:[self basicCredentialsWithName:@"user1"
+                                                                               register:YES]];
+    RLMRealmConfiguration *initialSyncConfig = [initialUser configurationWithPartitionValue:nil];
+    initialSyncConfig.objectClasses = @[Person.class];
+
+    // Make sure objects with confliciting primary keys sync ok.
+    RLMObjectId *conflictingObjectId = [RLMObjectId objectId];
+    Person *person = [Person ringo];
+    person._id = conflictingObjectId;
+
+    RLMRealm *initialRealm = [RLMRealm realmWithConfiguration:initialSyncConfig error:nil];
+    [initialRealm transactionWithBlock:^{
+        [initialRealm addObject:person];
+        [initialRealm addObject:[Person john]];
+    }];
+    [self waitForUploadsForRealm:initialRealm];
+
+    RLMRealmConfiguration *localConfig = [RLMRealmConfiguration new];
+    localConfig.objectClasses = @[Person.class];
+    localConfig.fileURL = RLMTestRealmURL();
+
+    RLMUser *user = [self logInUserForCredentials:[self basicCredentialsWithName:@"user2"
+                                                                        register:YES]];
+    RLMRealmConfiguration *syncConfig = [user configurationWithPartitionValue:nil];
+    syncConfig.objectClasses = @[Person.class];
+
+    RLMRealm *localRealm = [RLMRealm realmWithConfiguration:localConfig error:nil];
+    // `person2` will override what was previously stored on the server.
+    Person *person2 = [Person paul];
+    person2._id = conflictingObjectId;
+    person2.firstName = @"John";
+    person2.lastName = @"Doe";
+
+    [localRealm transactionWithBlock:^{
+        [localRealm addObject:person2];
+        [localRealm addObject:[Person george]];
+    }];
+
+    [localRealm exportForSyncWithConfiguration:syncConfig error:nil];
+
+    RLMRealm *syncedRealm = [RLMRealm realmWithConfiguration:syncConfig error:nil];
+    [self waitForDownloadsForRealm:syncedRealm];
+    XCTAssertEqual([syncedRealm allObjects:@"Person"].count, 3);
+    [syncedRealm transactionWithBlock:^{
+        [syncedRealm addObject:[Person stuart]];
+    }];
+
+    [self waitForUploadsForRealm:syncedRealm];
+    RLMResults<Person *> *syncedResults = [Person allObjectsInRealm:syncedRealm];
+
+    NSPredicate *p = [NSPredicate predicateWithFormat:@"firstName = 'John' AND lastName = 'Doe' AND _id = %@", conflictingObjectId];
+    XCTAssertEqual([syncedResults objectsWithPredicate:p].count, 1);
+    XCTAssertEqual([syncedRealm allObjects:@"Person"].count, 4);
+}
+
 @end
 
 #pragma mark - Mongo Client
