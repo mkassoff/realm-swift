@@ -157,6 +157,10 @@ NSData *RLMRealmValidatedEncryptionKey(NSData *key) {
     bool _sendingNotifications;
 }
 
+- (NSUInteger)numberOfActiveVersions {
+    return _realm->get_number_of_versions();
+}
+
 + (void)initialize {
     static bool initialized;
     if (initialized) {

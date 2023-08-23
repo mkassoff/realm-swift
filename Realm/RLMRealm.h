@@ -58,6 +58,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface RLMRealm : NSObject
 
+@property (nonatomic, readonly) NSUInteger numberOfActiveVersions;
+
 #pragma mark - Creating & Initializing a Realm
 
 /**
